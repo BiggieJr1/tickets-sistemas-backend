@@ -1,0 +1,16 @@
+# .NET
+bin/
+obj/
+*.user
+
+# Visual Studio
+.vs/
+*.suo
+
+# Variables de entorno / secretos locales
+.env
+.env.*
+
+# SQLite (ya no se usa para producción, pero por si queda algún .db de pruebas locales)
+*.db
+*.db-journal

@@ -1,0 +1,14 @@
+services:
+  tickets-api:
+    build:
+      context: ./TicketsSistemas.Api
+    container_name: tickets-sistemas-api
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5080:8080"   # solo accesible desde el propio servidor; nginx hace el proxy hacia afuera
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      # Cadena de conexión de Postgres/Supabase. No la escribas aquí: pon el
+      # valor real en un archivo .env (agregado a .gitignore) o expórtala en
+      # la shell antes de levantar el contenedor.
+      - ConnectionStrings__Default=${SUPABASE_CONNECTION_STRING}

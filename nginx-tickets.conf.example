@@ -1,0 +1,24 @@
+# Ejemplo para /etc/nginx/conf.d/tickets.conf
+# Ajusta server_name y las rutas a como las tengas en tu servidor.
+
+server {
+    listen 80;
+    server_name tickets.bisoft.local;  # o la IP/subdominio interno que uses
+
+    root /var/www/tickets-sistemas/frontend;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Todo lo que llegue a /api/* se manda al contenedor de la API,
+    # que en docker-compose.yml expone 127.0.0.1:5080
+    location /api/ {
+        proxy_pass http://127.0.0.1:5080/api/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
