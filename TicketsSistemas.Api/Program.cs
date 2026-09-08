@@ -62,11 +62,15 @@ builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
-// Crea la base de datos y aplica el esquema al arrancar si no existe.
+// Aplica las migraciones pendientes al arrancar. Se usa Migrate() en vez de
+// EnsureCreated() porque EnsureCreated() decide si "ya hay esquema" contando
+// cualquier tabla fuera de pg_catalog/information_schema, y en Supabase eso
+// incluye las tablas propias de Supabase (auth.*, storage.*, etc.), así que
+// nunca llegaba a crear las tablas de esta app.
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    db.Database.EnsureCreated();
+    db.Database.Migrate();
 }
 
 app.UseSwagger();
