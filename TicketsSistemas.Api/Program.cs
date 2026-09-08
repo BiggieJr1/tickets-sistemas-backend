@@ -1,5 +1,10 @@
+using System.Text;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 using TicketsSistemas.Api.Data;
+using TicketsSistemas.Api.Models;
+using TicketsSistemas.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -42,12 +47,63 @@ builder.Services.AddCors(options =>
     });
 });
 
-// --- API key compartida ---
-// Si se configura la variable de entorno API_KEY, todas las rutas /api/*
-// exigen el header "X-Api-Key" con ese valor. Pensado para cuando la API
-// queda expuesta públicamente (Railway, etc.); si no se configura (uso
-// interno en red local) no se exige nada, igual que antes.
-var apiKey = builder.Configuration["API_KEY"];
+// --- Autenticación por JWT ---
+// JWT_SECRET: clave simétrica para firmar/validar los tokens de login.
+// Bearer token en vez de cookie de sesión porque frontend (Netlify) y
+// backend (Railway) son orígenes distintos — evita meter credenciales en
+// CORS (SameSite=None, AllowCredentials) encima del ALLOWED_ORIGINS que ya
+// es delicado de mantener.
+var jwtSecret = builder.Configuration["JWT_SECRET"]
+    ?? throw new InvalidOperationException(
+        "Falta configurar JWT_SECRET (clave para firmar los tokens de login). " +
+        "Configúrala como variable de entorno JWT_SECRET.");
+
+builder.Services.AddSingleton<JwtService>();
+
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = false,
+            ValidateAudience = false,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret)),
+            ClockSkew = TimeSpan.FromMinutes(1),
+        };
+
+        options.Events = new JwtBearerEvents
+        {
+            // Revisa Activo en cada request (no solo al hacer login): así
+            // desactivar a alguien surte efecto de inmediato, sin esperar a
+            // que expire su token.
+            OnTokenValidated = async context =>
+            {
+                var idClaim = context.Principal?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                if (idClaim is null || !int.TryParse(idClaim, out var colaboradorId))
+                {
+                    context.Fail("Token inválido.");
+                    return;
+                }
+
+                var db = context.HttpContext.RequestServices.GetRequiredService<AppDbContext>();
+                var colaborador = await db.Colaboradores.FindAsync(colaboradorId);
+                if (colaborador is null || !colaborador.Activo)
+                {
+                    context.Fail("Cuenta desactivada o inexistente.");
+                }
+            }
+        };
+    });
+
+// Una sola policy con nombre respaldada por el claim "esAdministrador" del
+// JWT — suficiente para un equipo chico, sin tabla de permisos aparte.
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("Administrador", policy =>
+        policy.RequireClaim(ClaimesColaborador.EsAdministrador, "true"));
+});
 
 // Permite mandar y recibir los enums (Categoria, Prioridad, Estado)
 // como texto ("Red", "Critica") en vez de números en el JSON.
@@ -71,6 +127,30 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     db.Database.Migrate();
+
+    // Siembra el primer administrador si no existe todavía. Es la única
+    // forma de crear un colaborador sin ya ser admin, así que se hace por
+    // variable de entorno (mismo patrón que ConnectionStrings__Default /
+    // ALLOWED_ORIGINS) en vez de un endpoint abierto — que tendería a
+    // quedarse ahí "por si acaso", igual que pasó con la API key compartida
+    // que hubo que quitar después.
+    var seedEmail = app.Configuration["SEED_ADMIN_EMAIL"]?.Trim().ToLower();
+    var seedPassword = app.Configuration["SEED_ADMIN_PASSWORD"];
+    if (!string.IsNullOrWhiteSpace(seedEmail) && !string.IsNullOrWhiteSpace(seedPassword))
+    {
+        var yaExiste = db.Colaboradores.Any(c => c.Email == seedEmail);
+        if (!yaExiste)
+        {
+            db.Colaboradores.Add(new Colaborador
+            {
+                NombreCompleto = "Administrador",
+                Email = seedEmail,
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword(seedPassword),
+                EsAdministrador = true,
+            });
+            db.SaveChanges();
+        }
+    }
 }
 
 app.UseSwagger();
@@ -78,23 +158,8 @@ app.UseSwaggerUI();
 
 app.UseCors("Interno");
 
-if (!string.IsNullOrEmpty(apiKey))
-{
-    app.Use(async (context, next) =>
-    {
-        if (context.Request.Path.StartsWithSegments("/api"))
-        {
-            var provided = context.Request.Headers["X-Api-Key"].FirstOrDefault();
-            if (provided != apiKey)
-            {
-                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-                await context.Response.WriteAsync("API key inválida o faltante.");
-                return;
-            }
-        }
-        await next();
-    });
-}
+app.UseAuthentication();
+app.UseAuthorization();
 
 app.MapControllers();
 

@@ -1,3 +1,5 @@
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TicketsSistemas.Api.Data;
@@ -8,6 +10,7 @@ namespace TicketsSistemas.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
 public class TicketsController : ControllerBase
 {
     private readonly AppDbContext _db;
@@ -28,19 +31,26 @@ public class TicketsController : ControllerBase
         [Prioridad.Baja] = 3
     };
 
-    // GET /api/tickets?categoria=&prioridad=&estado=&search=
+    // Incluye los nombres de "asignado a" / "actualizado por" en la
+    // respuesta (TicketResponseDto.FromEntity los necesita cargados).
+    private IQueryable<Ticket> TicketsConNombres() =>
+        _db.Tickets.Include(t => t.AsignadoA).Include(t => t.ActualizadoPor);
+
+    // GET /api/tickets?categoria=&prioridad=&estado=&asignadoAId=&search=
     [HttpGet]
     public async Task<ActionResult<IEnumerable<TicketResponseDto>>> GetAll(
         [FromQuery] Categoria? categoria,
         [FromQuery] Prioridad? prioridad,
         [FromQuery] Estado? estado,
+        [FromQuery] int? asignadoAId,
         [FromQuery] string? search)
     {
-        var query = _db.Tickets.AsQueryable();
+        var query = TicketsConNombres();
 
         if (categoria.HasValue) query = query.Where(t => t.Categoria == categoria);
         if (prioridad.HasValue) query = query.Where(t => t.Prioridad == prioridad);
         if (estado.HasValue) query = query.Where(t => t.Estado == estado);
+        if (asignadoAId.HasValue) query = query.Where(t => t.AsignadoAId == asignadoAId);
         if (!string.IsNullOrWhiteSpace(search))
         {
             // ToLower() en ambos lados para que la búsqueda sea case-insensitive
@@ -64,7 +74,7 @@ public class TicketsController : ControllerBase
     [HttpGet("{id:int}")]
     public async Task<ActionResult<TicketResponseDto>> GetById(int id)
     {
-        var ticket = await _db.Tickets.FindAsync(id);
+        var ticket = await TicketsConNombres().FirstOrDefaultAsync(t => t.Id == id);
         if (ticket is null) return NotFound();
         return Ok(TicketResponseDto.FromEntity(ticket));
     }
@@ -97,11 +107,11 @@ public class TicketsController : ControllerBase
     [HttpPatch("{id:int}/estado")]
     public async Task<ActionResult<TicketResponseDto>> UpdateEstado(int id, TicketUpdateEstadoDto dto)
     {
-        var ticket = await _db.Tickets.FindAsync(id);
+        var ticket = await TicketsConNombres().FirstOrDefaultAsync(t => t.Id == id);
         if (ticket is null) return NotFound();
 
         ticket.Estado = dto.Estado;
-        ticket.Actualizado = DateTime.UtcNow;
+        MarcarActualizado(ticket);
         await _db.SaveChangesAsync();
 
         return Ok(TicketResponseDto.FromEntity(ticket));
@@ -111,18 +121,45 @@ public class TicketsController : ControllerBase
     [HttpPatch("{id:int}/prioridad")]
     public async Task<ActionResult<TicketResponseDto>> UpdatePrioridad(int id, TicketUpdatePrioridadDto dto)
     {
-        var ticket = await _db.Tickets.FindAsync(id);
+        var ticket = await TicketsConNombres().FirstOrDefaultAsync(t => t.Id == id);
         if (ticket is null) return NotFound();
 
         ticket.Prioridad = dto.Prioridad;
-        ticket.Actualizado = DateTime.UtcNow;
+        MarcarActualizado(ticket);
         await _db.SaveChangesAsync();
 
         return Ok(TicketResponseDto.FromEntity(ticket));
     }
 
-    // DELETE /api/tickets/5
+    // PATCH /api/tickets/5/asignacion — ColaboradorId null desasigna.
+    // Cualquier colaborador logueado puede asignar, no solo administradores:
+    // no es una acción sensible, es el día a día de dar seguimiento.
+    [HttpPatch("{id:int}/asignacion")]
+    public async Task<ActionResult<TicketResponseDto>> UpdateAsignacion(int id, TicketUpdateAsignacionDto dto)
+    {
+        var ticket = await TicketsConNombres().FirstOrDefaultAsync(t => t.Id == id);
+        if (ticket is null) return NotFound();
+
+        if (dto.ColaboradorId.HasValue &&
+            !await _db.Colaboradores.AnyAsync(c => c.Id == dto.ColaboradorId && c.Activo))
+        {
+            return BadRequest(new { message = "El colaborador no existe o está desactivado." });
+        }
+
+        ticket.AsignadoAId = dto.ColaboradorId;
+        MarcarActualizado(ticket);
+        await _db.SaveChangesAsync();
+
+        // Recargar para traer el nombre del nuevo AsignadoA en la respuesta.
+        await _db.Entry(ticket).Reference(t => t.AsignadoA).LoadAsync();
+
+        return Ok(TicketResponseDto.FromEntity(ticket));
+    }
+
+    // DELETE /api/tickets/5 — solo administradores: es irreversible, más
+    // sensible que asignar o cambiar estado/prioridad.
     [HttpDelete("{id:int}")]
+    [Authorize(Policy = "Administrador")]
     public async Task<IActionResult> Delete(int id)
     {
         var ticket = await _db.Tickets.FindAsync(id);
@@ -131,6 +168,18 @@ public class TicketsController : ControllerBase
         _db.Tickets.Remove(ticket);
         await _db.SaveChangesAsync();
         return NoContent();
+    }
+
+    private void MarcarActualizado(Ticket ticket)
+    {
+        ticket.Actualizado = DateTime.UtcNow;
+        ticket.ActualizadoPorId = ColaboradorIdActual();
+    }
+
+    private int? ColaboradorIdActual()
+    {
+        var idClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        return idClaim is not null && int.TryParse(idClaim, out var id) ? id : null;
     }
 
     private async Task<string> GenerarCodigoAsync()

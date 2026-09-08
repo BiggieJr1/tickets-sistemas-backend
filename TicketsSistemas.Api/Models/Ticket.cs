@@ -16,6 +16,16 @@ public class Ticket
 
     public string Solicitante { get; set; } = string.Empty;
 
+    // A quién está asignado el ticket. Nullable: "sin asignar" es un estado
+    // válido y es el default al crear un ticket.
+    public int? AsignadoAId { get; set; }
+    public Colaborador? AsignadoA { get; set; }
+
+    // Quién hizo el último cambio (PATCH de estado/prioridad/asignación).
+    // Respuesta mínima a "quién hizo qué" sin una tabla de historial completa.
+    public int? ActualizadoPorId { get; set; }
+    public Colaborador? ActualizadoPor { get; set; }
+
     public DateTime Creado { get; set; } = DateTime.UtcNow;
     public DateTime? Actualizado { get; set; }
 }
