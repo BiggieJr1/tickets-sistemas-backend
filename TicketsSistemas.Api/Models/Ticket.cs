@@ -14,7 +14,7 @@ public class Ticket
     public Prioridad Prioridad { get; set; }
     public Estado Estado { get; set; } = Estado.Abierto;
 
-    public string? Solicitante { get; set; }
+    public string Solicitante { get; set; } = string.Empty;
 
     public DateTime Creado { get; set; } = DateTime.UtcNow;
     public DateTime? Actualizado { get; set; }

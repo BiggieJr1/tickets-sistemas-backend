@@ -19,6 +19,9 @@ public class TicketsController : ControllerBase
 
     private static readonly Dictionary<Prioridad, int> OrdenPrioridad = new()
     {
+        // Sin asignar queda primero: son los tickets que el equipo todavía
+        // no ha revisado para darles una prioridad real.
+        [Prioridad.SinAsignar] = -1,
         [Prioridad.Critica] = 0,
         [Prioridad.Alta] = 1,
         [Prioridad.Media] = 2,
@@ -78,9 +81,9 @@ public class TicketsController : ControllerBase
             Titulo = dto.Titulo.Trim(),
             Descripcion = dto.Descripcion.Trim(),
             Categoria = dto.Categoria,
-            Prioridad = dto.Prioridad,
+            Prioridad = Prioridad.SinAsignar,
             Estado = Estado.Abierto,
-            Solicitante = string.IsNullOrWhiteSpace(dto.Solicitante) ? null : dto.Solicitante.Trim(),
+            Solicitante = dto.Solicitante.Trim(),
             Creado = DateTime.UtcNow
         };
 

@@ -14,11 +14,8 @@ public class TicketCreateDto
     [Required]
     public Categoria Categoria { get; set; }
 
-    [Required]
-    public Prioridad Prioridad { get; set; }
-
-    [MaxLength(80)]
-    public string? Solicitante { get; set; }
+    [Required, MaxLength(80)]
+    public string Solicitante { get; set; } = string.Empty;
 }
 
 public class TicketUpdateEstadoDto
@@ -42,7 +39,7 @@ public class TicketResponseDto
     public string Categoria { get; set; } = string.Empty;
     public string Prioridad { get; set; } = string.Empty;
     public string Estado { get; set; } = string.Empty;
-    public string? Solicitante { get; set; }
+    public string Solicitante { get; set; } = string.Empty;
     public DateTime Creado { get; set; }
     public DateTime? Actualizado { get; set; }
 
