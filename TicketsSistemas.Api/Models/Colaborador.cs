@@ -1,12 +1,17 @@
 namespace TicketsSistemas.Api.Models;
 
-// Nombre del claim que dice si el colaborador es administrador. Se agrega a
-// la identidad en Program.cs (OnTokenValidated) después de resolver el
-// Colaborador local a partir del correo del token de Microsoft — Entra ID no
-// sabe nada de roles de esta app, así que este claim nunca viaja en el token
-// que emite Microsoft.
+// Nombres de los claims que esta app le agrega a la identidad en Program.cs
+// (OnTokenValidated) después de resolver el Colaborador local a partir del
+// correo del token de Microsoft — Entra ID no sabe nada de esto, así que
+// nunca viajan en el token que emite Microsoft.
+// ColaboradorId usa un nombre propio (no ClaimTypes.NameIdentifier) porque
+// Microsoft.Identity.Web ya mapea el claim "sub" del token a
+// ClaimTypes.NameIdentifier automáticamente — reusar ese tipo chocaba con el
+// "sub" (un id opaco de Microsoft, no numérico) y User.FindFirstValue()
+// devolvía ese en vez del id local.
 public static class ClaimesColaborador
 {
+    public const string ColaboradorId = "colaboradorId";
     public const string EsAdministrador = "esAdministrador";
 }
 

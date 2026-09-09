@@ -112,7 +112,7 @@ builder.Services.Configure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationSch
         logger.LogInformation("Login aceptado para ColaboradorId={ColaboradorId}, correo={Email}.", colaborador.Id, email);
 
         var identity = (ClaimsIdentity)context.Principal!.Identity!;
-        identity.AddClaim(new Claim(ClaimTypes.NameIdentifier, colaborador.Id.ToString()));
+        identity.AddClaim(new Claim(ClaimesColaborador.ColaboradorId, colaborador.Id.ToString()));
         identity.AddClaim(new Claim(ClaimesColaborador.EsAdministrador, colaborador.EsAdministrador ? "true" : "false"));
     };
 });

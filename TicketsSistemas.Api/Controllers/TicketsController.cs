@@ -178,7 +178,7 @@ public class TicketsController : ControllerBase
 
     private int? ColaboradorIdActual()
     {
-        var idClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var idClaim = User.FindFirstValue(ClaimesColaborador.ColaboradorId);
         return idClaim is not null && int.TryParse(idClaim, out var id) ? id : null;
     }
 

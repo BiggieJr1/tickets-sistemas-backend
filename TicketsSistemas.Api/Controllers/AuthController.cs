@@ -34,7 +34,7 @@ public class AuthController : ControllerBase
 
     private async Task<Colaborador?> ColaboradorActualAsync()
     {
-        var idClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var idClaim = User.FindFirstValue(ClaimesColaborador.ColaboradorId);
         if (idClaim is null || !int.TryParse(idClaim, out var id)) return null;
         return await _db.Colaboradores.FindAsync(id);
     }
