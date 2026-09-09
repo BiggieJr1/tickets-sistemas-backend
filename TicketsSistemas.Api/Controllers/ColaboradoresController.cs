@@ -48,7 +48,6 @@ public class ColaboradoresController : ControllerBase
         {
             NombreCompleto = dto.NombreCompleto.Trim(),
             Email = email,
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password),
             EsAdministrador = dto.EsAdministrador,
             Activo = true,
         };
@@ -79,20 +78,5 @@ public class ColaboradoresController : ControllerBase
         await _db.SaveChangesAsync();
 
         return Ok(ColaboradorResponseDto.FromEntity(colaborador));
-    }
-
-    // PATCH /api/colaboradores/5/password
-    [HttpPatch("{id:int}/password")]
-    [Authorize(Policy = "Administrador")]
-    public async Task<IActionResult> CambiarPassword(int id, CambiarPasswordDto dto)
-    {
-        var colaborador = await _db.Colaboradores.FindAsync(id);
-        if (colaborador is null) return NotFound();
-
-        colaborador.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password);
-        colaborador.Actualizado = DateTime.UtcNow;
-        await _db.SaveChangesAsync();
-
-        return NoContent();
     }
 }

@@ -3,28 +3,6 @@ using TicketsSistemas.Api.Models;
 
 namespace TicketsSistemas.Api.Dtos;
 
-public class LoginDto
-{
-    [Required, EmailAddress]
-    public string Email { get; set; } = string.Empty;
-
-    [Required]
-    public string Password { get; set; } = string.Empty;
-}
-
-public class LoginResponseDto
-{
-    public string Token { get; set; } = string.Empty;
-    public DateTime Expira { get; set; }
-    public ColaboradorResponseDto Colaborador { get; set; } = null!;
-}
-
-public class CambiarPasswordDto
-{
-    [Required, MinLength(8)]
-    public string Password { get; set; } = string.Empty;
-}
-
 public class ColaboradorCreateDto
 {
     [Required, MaxLength(120)]
@@ -32,9 +10,6 @@ public class ColaboradorCreateDto
 
     [Required, EmailAddress, MaxLength(160)]
     public string Email { get; set; } = string.Empty;
-
-    [Required, MinLength(8)]
-    public string Password { get; set; } = string.Empty;
 
     public bool EsAdministrador { get; set; }
 }

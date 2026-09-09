@@ -1,11 +1,9 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using TicketsSistemas.Api.Data;
 using TicketsSistemas.Api.Dtos;
 using TicketsSistemas.Api.Models;
-using TicketsSistemas.Api.Services;
 
 namespace TicketsSistemas.Api.Controllers;
 
@@ -15,59 +13,23 @@ namespace TicketsSistemas.Api.Controllers;
 public class AuthController : ControllerBase
 {
     private readonly AppDbContext _db;
-    private readonly JwtService _jwt;
 
-    public AuthController(AppDbContext db, JwtService jwt)
+    public AuthController(AppDbContext db)
     {
         _db = db;
-        _jwt = jwt;
-    }
-
-    // POST /api/auth/login
-    [HttpPost("login")]
-    [AllowAnonymous]
-    public async Task<ActionResult<LoginResponseDto>> Login(LoginDto dto)
-    {
-        var email = dto.Email.Trim().ToLower();
-        var colaborador = await _db.Colaboradores.FirstOrDefaultAsync(c => c.Email.ToLower() == email);
-
-        if (colaborador is null || !colaborador.Activo ||
-            !BCrypt.Net.BCrypt.Verify(dto.Password, colaborador.PasswordHash))
-        {
-            return Unauthorized(new { message = "Correo o contraseña incorrectos." });
-        }
-
-        var (token, expira) = _jwt.GenerarToken(colaborador);
-
-        return Ok(new LoginResponseDto
-        {
-            Token = token,
-            Expira = expira,
-            Colaborador = ColaboradorResponseDto.FromEntity(colaborador)
-        });
     }
 
     // GET /api/auth/me
+    // El login en sí ya pasó en Microsoft (Entra ID) antes de llegar aquí:
+    // este endpoint solo devuelve el perfil local (id, admin, activo) que
+    // Microsoft no conoce, a partir del colaborador que Program.cs ya
+    // resolvió y adjuntó como claims durante la validación del token.
     [HttpGet("me")]
     public async Task<ActionResult<ColaboradorResponseDto>> Me()
     {
         var colaborador = await ColaboradorActualAsync();
         if (colaborador is null) return Unauthorized();
         return Ok(ColaboradorResponseDto.FromEntity(colaborador));
-    }
-
-    // PATCH /api/auth/me/password
-    [HttpPatch("me/password")]
-    public async Task<IActionResult> CambiarMiPassword(CambiarPasswordDto dto)
-    {
-        var colaborador = await ColaboradorActualAsync();
-        if (colaborador is null) return Unauthorized();
-
-        colaborador.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password);
-        colaborador.Actualizado = DateTime.UtcNow;
-        await _db.SaveChangesAsync();
-
-        return NoContent();
     }
 
     private async Task<Colaborador?> ColaboradorActualAsync()

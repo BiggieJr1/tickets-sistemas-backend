@@ -1,10 +1,9 @@
-using System.Text;
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.IdentityModel.Tokens;
+using Microsoft.Identity.Web;
 using TicketsSistemas.Api.Data;
 using TicketsSistemas.Api.Models;
-using TicketsSistemas.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -47,55 +46,56 @@ builder.Services.AddCors(options =>
     });
 });
 
-// --- Autenticación por JWT ---
-// JWT_SECRET: clave simétrica para firmar/validar los tokens de login.
-// Bearer token en vez de cookie de sesión porque frontend (Netlify) y
-// backend (Railway) son orígenes distintos — evita meter credenciales en
-// CORS (SameSite=None, AllowCredentials) encima del ALLOWED_ORIGINS que ya
-// es delicado de mantener.
-var jwtSecret = builder.Configuration["JWT_SECRET"]
-    ?? throw new InvalidOperationException(
-        "Falta configurar JWT_SECRET (clave para firmar los tokens de login). " +
-        "Configúrala como variable de entorno JWT_SECRET.");
-
-builder.Services.AddSingleton<JwtService>();
-
+// --- Autenticación con Microsoft Entra ID ---
+// Ya no se firman JWT propios: el frontend (MSAL.js) hace login contra
+// Microsoft y manda como Bearer un access token emitido por Entra ID para el
+// scope de esta API (App Registration "tickets-sistemas-api"). Sigue siendo
+// Bearer token (no cookie), así que frontend/backend en orígenes distintos
+// (Netlify/Railway) no necesitan tocar CORS con credenciales.
+// Config vía variables de entorno AzureAd__TenantId / AzureAd__ClientId
+// (ClientId = Application ID de la API registrada en Entra), mismo patrón
+// que ALLOWED_ORIGINS.
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
+    .AddMicrosoftIdentityWebApi(builder.Configuration.GetSection("AzureAd"));
+
+// Microsoft.Identity.Web ya registró sus propios manejadores de
+// OnTokenValidated (validan issuer/audience/firma contra Entra ID). Se
+// encadena uno más: a partir del correo del token de Microsoft, resuelve el
+// Colaborador local y le agrega los claims que sí conoce esta app (Id,
+// esAdministrador) — así el resto del backend (ColaboradorActualAsync, la
+// policy "Administrador") sigue funcionando igual que con el JWT propio.
+// También revisa Activo en cada request: desactivar a alguien surte efecto
+// de inmediato, sin esperar a que expire su token de Microsoft. Si el correo
+// no corresponde a ningún Colaborador dado de alta, rechaza — a propósito no
+// hay auto-alta (ver nota del seed más abajo).
+builder.Services.Configure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>
+{
+    var validacionPrevia = options.Events!.OnTokenValidated;
+    options.Events.OnTokenValidated = async context =>
     {
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = false,
-            ValidateAudience = false,
-            ValidateLifetime = true,
-            ValidateIssuerSigningKey = true,
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret)),
-            ClockSkew = TimeSpan.FromMinutes(1),
-        };
+        if (validacionPrevia is not null) await validacionPrevia(context);
+        if (context.Result is not null) return; // ya falló arriba
 
-        options.Events = new JwtBearerEvents
-        {
-            // Revisa Activo en cada request (no solo al hacer login): así
-            // desactivar a alguien surte efecto de inmediato, sin esperar a
-            // que expire su token.
-            OnTokenValidated = async context =>
-            {
-                var idClaim = context.Principal?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-                if (idClaim is null || !int.TryParse(idClaim, out var colaboradorId))
-                {
-                    context.Fail("Token inválido.");
-                    return;
-                }
+        var email = context.Principal?.FindFirstValue(ClaimTypes.Upn)
+            ?? context.Principal?.FindFirstValue("preferred_username")
+            ?? context.Principal?.FindFirstValue(ClaimTypes.Email);
 
-                var db = context.HttpContext.RequestServices.GetRequiredService<AppDbContext>();
-                var colaborador = await db.Colaboradores.FindAsync(colaboradorId);
-                if (colaborador is null || !colaborador.Activo)
-                {
-                    context.Fail("Cuenta desactivada o inexistente.");
-                }
-            }
-        };
-    });
+        var db = context.HttpContext.RequestServices.GetRequiredService<AppDbContext>();
+        var colaborador = email is null
+            ? null
+            : await db.Colaboradores.FirstOrDefaultAsync(c => c.Email.ToLower() == email.Trim().ToLower());
+
+        if (colaborador is null || !colaborador.Activo)
+        {
+            context.Fail("Cuenta no registrada o desactivada. Contacta a un administrador.");
+            return;
+        }
+
+        var identity = (ClaimsIdentity)context.Principal!.Identity!;
+        identity.AddClaim(new Claim(ClaimTypes.NameIdentifier, colaborador.Id.ToString()));
+        identity.AddClaim(new Claim(ClaimesColaborador.EsAdministrador, colaborador.EsAdministrador ? "true" : "false"));
+    };
+});
 
 // Una sola policy con nombre respaldada por el claim "esAdministrador" del
 // JWT — suficiente para un equipo chico, sin tabla de permisos aparte.
@@ -133,10 +133,10 @@ using (var scope = app.Services.CreateScope())
     // variable de entorno (mismo patrón que ConnectionStrings__Default /
     // ALLOWED_ORIGINS) en vez de un endpoint abierto — que tendería a
     // quedarse ahí "por si acaso", igual que pasó con la API key compartida
-    // que hubo que quitar después.
+    // que hubo que quitar después. Ya no hace falta una contraseña: quien
+    // entra con esa cuenta de Microsoft ya se autenticó con Entra ID.
     var seedEmail = app.Configuration["SEED_ADMIN_EMAIL"]?.Trim().ToLower();
-    var seedPassword = app.Configuration["SEED_ADMIN_PASSWORD"];
-    if (!string.IsNullOrWhiteSpace(seedEmail) && !string.IsNullOrWhiteSpace(seedPassword))
+    if (!string.IsNullOrWhiteSpace(seedEmail))
     {
         var yaExiste = db.Colaboradores.Any(c => c.Email == seedEmail);
         if (!yaExiste)
@@ -145,7 +145,6 @@ using (var scope = app.Services.CreateScope())
             {
                 NombreCompleto = "Administrador",
                 Email = seedEmail,
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword(seedPassword),
                 EsAdministrador = true,
             });
             db.SaveChanges();
