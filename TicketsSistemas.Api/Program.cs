@@ -70,11 +70,26 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 // hay auto-alta (ver nota del seed más abajo).
 builder.Services.Configure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>
 {
+    // Microsoft.Identity.Web no manda el detalle del rechazo al navegador
+    // (por seguridad, en Production); se loguea aquí para poder verlo en
+    // Railway cuando algo falla.
+    var fallaPrevia = options.Events!.OnAuthenticationFailed;
+    options.Events.OnAuthenticationFailed = async context =>
+    {
+        if (fallaPrevia is not null) await fallaPrevia(context);
+        var logger = context.HttpContext.RequestServices
+            .GetRequiredService<ILoggerFactory>().CreateLogger("EntraAuth");
+        logger.LogWarning(context.Exception, "Token de Microsoft rechazado antes de llegar a OnTokenValidated.");
+    };
+
     var validacionPrevia = options.Events!.OnTokenValidated;
     options.Events.OnTokenValidated = async context =>
     {
         if (validacionPrevia is not null) await validacionPrevia(context);
         if (context.Result is not null) return; // ya falló arriba
+
+        var logger = context.HttpContext.RequestServices
+            .GetRequiredService<ILoggerFactory>().CreateLogger("EntraAuth");
 
         var email = context.Principal?.FindFirstValue(ClaimTypes.Upn)
             ?? context.Principal?.FindFirstValue("preferred_username")
@@ -87,9 +102,14 @@ builder.Services.Configure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationSch
 
         if (colaborador is null || !colaborador.Activo)
         {
+            logger.LogWarning(
+                "Login rechazado: correo del token de Microsoft = '{Email}', Colaborador encontrado = {Encontrado}, Activo = {Activo}.",
+                email, colaborador is not null, colaborador?.Activo);
             context.Fail("Cuenta no registrada o desactivada. Contacta a un administrador.");
             return;
         }
+
+        logger.LogInformation("Login aceptado para ColaboradorId={ColaboradorId}, correo={Email}.", colaborador.Id, email);
 
         var identity = (ClaimsIdentity)context.Principal!.Identity!;
         identity.AddClaim(new Claim(ClaimTypes.NameIdentifier, colaborador.Id.ToString()));
