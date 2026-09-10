@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using TicketsSistemas.Api.Data;
 using TicketsSistemas.Api.Dtos;
 using TicketsSistemas.Api.Models;
+using TicketsSistemas.Api.Services;
 
 namespace TicketsSistemas.Api.Controllers;
 
@@ -14,10 +15,12 @@ namespace TicketsSistemas.Api.Controllers;
 public class TicketsController : ControllerBase
 {
     private readonly AppDbContext _db;
+    private readonly IEmailNotificationService _email;
 
-    public TicketsController(AppDbContext db)
+    public TicketsController(AppDbContext db, IEmailNotificationService email)
     {
         _db = db;
+        _email = email;
     }
 
     private static readonly Dictionary<Prioridad, int> OrdenPrioridad = new()
@@ -99,6 +102,12 @@ public class TicketsController : ControllerBase
 
         _db.Tickets.Add(ticket);
         await _db.SaveChangesAsync();
+
+        var correosAdmins = await _db.Colaboradores
+            .Where(c => c.EsAdministrador && c.Activo)
+            .Select(c => c.Email)
+            .ToListAsync();
+        await _email.NotificarTicketCreadoAsync(ticket, correosAdmins);
 
         return CreatedAtAction(nameof(GetById), new { id = ticket.Id }, TicketResponseDto.FromEntity(ticket));
     }

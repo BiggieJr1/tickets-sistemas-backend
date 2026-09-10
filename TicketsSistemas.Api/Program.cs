@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Identity.Web;
 using TicketsSistemas.Api.Data;
 using TicketsSistemas.Api.Models;
+using TicketsSistemas.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -135,6 +136,12 @@ builder.Services.AddControllers()
     });
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+
+// --- Notificaciones por correo (Microsoft Graph) ---
+// Ver Services/GraphEmailNotificationService.cs para el detalle de config
+// (Graph:ClientSecret, Graph:SenderUpn).
+builder.Services.AddHttpClient();
+builder.Services.AddScoped<IEmailNotificationService, GraphEmailNotificationService>();
 
 var app = builder.Build();
 
