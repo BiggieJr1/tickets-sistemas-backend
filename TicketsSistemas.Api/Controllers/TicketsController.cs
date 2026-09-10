@@ -103,8 +103,10 @@ public class TicketsController : ControllerBase
         return CreatedAtAction(nameof(GetById), new { id = ticket.Id }, TicketResponseDto.FromEntity(ticket));
     }
 
-    // PATCH /api/tickets/5/estado
+    // PATCH /api/tickets/5/estado — solo administradores: un colaborador
+    // regular no debe poder cerrar o reabrir tickets ajenos.
     [HttpPatch("{id:int}/estado")]
+    [Authorize(Policy = "Administrador")]
     public async Task<ActionResult<TicketResponseDto>> UpdateEstado(int id, TicketUpdateEstadoDto dto)
     {
         var ticket = await TicketsConNombres().FirstOrDefaultAsync(t => t.Id == id);
@@ -117,8 +119,10 @@ public class TicketsController : ControllerBase
         return Ok(TicketResponseDto.FromEntity(ticket));
     }
 
-    // PATCH /api/tickets/5/prioridad
+    // PATCH /api/tickets/5/prioridad — solo administradores: es quien
+    // triagea y decide qué tan urgente es cada ticket.
     [HttpPatch("{id:int}/prioridad")]
+    [Authorize(Policy = "Administrador")]
     public async Task<ActionResult<TicketResponseDto>> UpdatePrioridad(int id, TicketUpdatePrioridadDto dto)
     {
         var ticket = await TicketsConNombres().FirstOrDefaultAsync(t => t.Id == id);
@@ -132,9 +136,10 @@ public class TicketsController : ControllerBase
     }
 
     // PATCH /api/tickets/5/asignacion — ColaboradorId null desasigna.
-    // Cualquier colaborador logueado puede asignar, no solo administradores:
-    // no es una acción sensible, es el día a día de dar seguimiento.
+    // Solo administradores: se detectó en pruebas que cualquier colaborador
+    // logueado podía reasignar tickets ajenos, no solo los propios.
     [HttpPatch("{id:int}/asignacion")]
+    [Authorize(Policy = "Administrador")]
     public async Task<ActionResult<TicketResponseDto>> UpdateAsignacion(int id, TicketUpdateAsignacionDto dto)
     {
         var ticket = await TicketsConNombres().FirstOrDefaultAsync(t => t.Id == id);
