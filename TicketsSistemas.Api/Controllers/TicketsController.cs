@@ -154,10 +154,12 @@ public class TicketsController : ControllerBase
         var ticket = await TicketsConNombres().FirstOrDefaultAsync(t => t.Id == id);
         if (ticket is null) return NotFound();
 
+        // Solo se puede asignar a colaboradores administradores: son quienes
+        // dan seguimiento a los tickets, no cualquier colaborador dado de alta.
         if (dto.ColaboradorId.HasValue &&
-            !await _db.Colaboradores.AnyAsync(c => c.Id == dto.ColaboradorId && c.Activo))
+            !await _db.Colaboradores.AnyAsync(c => c.Id == dto.ColaboradorId && c.Activo && c.EsAdministrador))
         {
-            return BadRequest(new { message = "El colaborador no existe o está desactivado." });
+            return BadRequest(new { message = "El colaborador no existe, está desactivado o no es administrador." });
         }
 
         ticket.AsignadoAId = dto.ColaboradorId;
