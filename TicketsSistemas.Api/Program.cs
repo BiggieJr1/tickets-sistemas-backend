@@ -142,6 +142,7 @@ builder.Services.AddSwaggerGen();
 // (Graph:ClientSecret, Graph:SenderUpn).
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<IEmailNotificationService, GraphEmailNotificationService>();
+builder.Services.AddScoped<IDirectoryService, GraphDirectoryService>();
 
 var app = builder.Build();
 

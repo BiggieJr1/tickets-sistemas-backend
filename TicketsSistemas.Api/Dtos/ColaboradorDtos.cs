@@ -46,3 +46,11 @@ public class ColaboradorResponseDto
         Activo = c.Activo,
     };
 }
+
+// Resultado de POST /api/colaboradores/importar-entra.
+public class ColaboradorImportResultDto
+{
+    public int Total { get; set; }
+    public int Importados { get; set; }
+    public int YaExistian { get; set; }
+}

@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using TicketsSistemas.Api.Data;
 using TicketsSistemas.Api.Dtos;
 using TicketsSistemas.Api.Models;
+using TicketsSistemas.Api.Services;
 
 namespace TicketsSistemas.Api.Controllers;
 
@@ -13,10 +14,12 @@ namespace TicketsSistemas.Api.Controllers;
 public class ColaboradoresController : ControllerBase
 {
     private readonly AppDbContext _db;
+    private readonly IDirectoryService _directory;
 
-    public ColaboradoresController(AppDbContext db)
+    public ColaboradoresController(AppDbContext db, IDirectoryService directory)
     {
         _db = db;
+        _directory = directory;
     }
 
     // GET /api/colaboradores?soloActivos=true
@@ -78,5 +81,53 @@ public class ColaboradoresController : ControllerBase
         await _db.SaveChangesAsync();
 
         return Ok(ColaboradorResponseDto.FromEntity(colaborador));
+    }
+
+    // POST /api/colaboradores/importar-entra — trae todo el directorio de
+    // Entra ID (cuentas @bisoft.com.mx habilitadas, sin invitados) y da de
+    // alta como Colaborador no-admin/activo a quien no exista ya (por
+    // correo). No toca a quien ya está dado de alta: no pisa el rol de
+    // admin ni el estado activo/inactivo de nadie.
+    [HttpPost("importar-entra")]
+    [Authorize(Policy = "Administrador")]
+    public async Task<ActionResult<ColaboradorImportResultDto>> ImportarDesdeEntra()
+    {
+        IReadOnlyList<DirectoryUsuario> usuarios;
+        try
+        {
+            usuarios = await _directory.ObtenerUsuariosAsync();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Problem(ex.Message, statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+
+        var existentes = (await _db.Colaboradores.Select(c => c.Email).ToListAsync())
+            .Select(e => e.ToLower())
+            .ToHashSet();
+
+        var nuevos = new List<Colaborador>();
+        foreach (var u in usuarios)
+        {
+            if (!existentes.Add(u.Email)) continue; // ya existía o duplicado en el directorio
+
+            nuevos.Add(new Colaborador
+            {
+                NombreCompleto = u.NombreCompleto,
+                Email = u.Email,
+                EsAdministrador = false,
+                Activo = true,
+            });
+        }
+
+        _db.Colaboradores.AddRange(nuevos);
+        await _db.SaveChangesAsync();
+
+        return Ok(new ColaboradorImportResultDto
+        {
+            Total = usuarios.Count,
+            Importados = nuevos.Count,
+            YaExistian = usuarios.Count - nuevos.Count,
+        });
     }
 }
