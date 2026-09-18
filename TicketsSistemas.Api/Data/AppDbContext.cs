@@ -9,6 +9,7 @@ public class AppDbContext : DbContext
 
     public DbSet<Ticket> Tickets => Set<Ticket>();
     public DbSet<Colaborador> Colaboradores => Set<Colaborador>();
+    public DbSet<TicketEvento> TicketEventos => Set<TicketEvento>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -37,6 +38,26 @@ public class AppDbContext : DbContext
             entity.HasIndex(c => c.Email).IsUnique();
             entity.Property(c => c.NombreCompleto).IsRequired().HasMaxLength(120);
             entity.Property(c => c.Email).IsRequired().HasMaxLength(160);
+        });
+
+        modelBuilder.Entity<TicketEvento>(entity =>
+        {
+            entity.Property(e => e.Texto).HasMaxLength(4000);
+            entity.HasIndex(e => e.TicketId);
+
+            // Cascade: si se borra el ticket, no tiene sentido dejar su
+            // historial huérfano.
+            entity.HasOne(e => e.Ticket)
+                  .WithMany()
+                  .HasForeignKey(e => e.TicketId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            // SetNull: igual que AsignadoA/ActualizadoPor en Ticket, borrar
+            // un colaborador no debe tumbar el historial que dejó.
+            entity.HasOne(e => e.Colaborador)
+                  .WithMany()
+                  .HasForeignKey(e => e.ColaboradorId)
+                  .OnDelete(DeleteBehavior.SetNull);
         });
     }
 }

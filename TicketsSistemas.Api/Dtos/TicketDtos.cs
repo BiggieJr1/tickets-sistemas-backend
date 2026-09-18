@@ -36,6 +36,35 @@ public class TicketUpdateAsignacionDto
     public int? ColaboradorId { get; set; }
 }
 
+public class TicketComentarioCreateDto
+{
+    [Required, MaxLength(4000)]
+    public string Texto { get; set; } = string.Empty;
+}
+
+public class TicketEventoResponseDto
+{
+    public int Id { get; set; }
+    public string Tipo { get; set; } = string.Empty;
+    public string? ColaboradorNombre { get; set; }
+    public string? ValorAnterior { get; set; }
+    public string? ValorNuevo { get; set; }
+    public string? Texto { get; set; }
+    public DateTime Creado { get; set; }
+
+    // Requiere el TicketEvento cargado con .Include(e => e.Colaborador).
+    public static TicketEventoResponseDto FromEntity(TicketEvento e) => new()
+    {
+        Id = e.Id,
+        Tipo = e.Tipo.ToString(),
+        ColaboradorNombre = e.Colaborador?.NombreCompleto,
+        ValorAnterior = e.ValorAnterior,
+        ValorNuevo = e.ValorNuevo,
+        Texto = e.Texto,
+        Creado = e.Creado,
+    };
+}
+
 public class TicketResponseDto
 {
     public int Id { get; set; }

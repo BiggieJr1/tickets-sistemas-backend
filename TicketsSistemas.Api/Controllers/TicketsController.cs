@@ -121,8 +121,10 @@ public class TicketsController : ControllerBase
         var ticket = await TicketsConNombres().FirstOrDefaultAsync(t => t.Id == id);
         if (ticket is null) return NotFound();
 
+        var estadoAnterior = ticket.Estado;
         ticket.Estado = dto.Estado;
         MarcarActualizado(ticket);
+        RegistrarEvento(ticket.Id, TipoEventoTicket.CambioEstado, estadoAnterior.ToString(), dto.Estado.ToString());
         await _db.SaveChangesAsync();
 
         return Ok(TicketResponseDto.FromEntity(ticket));
@@ -137,8 +139,10 @@ public class TicketsController : ControllerBase
         var ticket = await TicketsConNombres().FirstOrDefaultAsync(t => t.Id == id);
         if (ticket is null) return NotFound();
 
+        var prioridadAnterior = ticket.Prioridad;
         ticket.Prioridad = dto.Prioridad;
         MarcarActualizado(ticket);
+        RegistrarEvento(ticket.Id, TipoEventoTicket.CambioPrioridad, prioridadAnterior.ToString(), dto.Prioridad.ToString());
         await _db.SaveChangesAsync();
 
         return Ok(TicketResponseDto.FromEntity(ticket));
@@ -162,14 +166,60 @@ public class TicketsController : ControllerBase
             return BadRequest(new { message = "El colaborador no existe, está desactivado o no es administrador." });
         }
 
+        var nombreAnterior = ticket.AsignadoA?.NombreCompleto ?? "Sin asignar";
+
         ticket.AsignadoAId = dto.ColaboradorId;
         MarcarActualizado(ticket);
+
+        // Recargar para traer el nombre del nuevo AsignadoA (para el evento
+        // y la respuesta).
+        await _db.Entry(ticket).Reference(t => t.AsignadoA).LoadAsync();
+        var nombreNuevo = ticket.AsignadoA?.NombreCompleto ?? "Sin asignar";
+
+        RegistrarEvento(ticket.Id, TipoEventoTicket.CambioAsignacion, nombreAnterior, nombreNuevo);
         await _db.SaveChangesAsync();
 
-        // Recargar para traer el nombre del nuevo AsignadoA en la respuesta.
-        await _db.Entry(ticket).Reference(t => t.AsignadoA).LoadAsync();
-
         return Ok(TicketResponseDto.FromEntity(ticket));
+    }
+
+    // GET /api/tickets/5/historial — cualquier colaborador logueado puede
+    // ver la línea de tiempo (cambios automáticos + comentarios), aunque
+    // solo un admin pueda escribir comentarios.
+    [HttpGet("{id:int}/historial")]
+    public async Task<ActionResult<IEnumerable<TicketEventoResponseDto>>> GetHistorial(int id)
+    {
+        if (!await _db.Tickets.AnyAsync(t => t.Id == id)) return NotFound();
+
+        var eventos = await _db.TicketEventos
+            .Include(e => e.Colaborador)
+            .Where(e => e.TicketId == id)
+            .OrderBy(e => e.Creado)
+            .ToListAsync();
+
+        return Ok(eventos.Select(TicketEventoResponseDto.FromEntity));
+    }
+
+    // POST /api/tickets/5/comentarios — solo administradores: son quienes
+    // resuelven y dan seguimiento a los tickets, no cualquier colaborador.
+    [HttpPost("{id:int}/comentarios")]
+    [Authorize(Policy = "Administrador")]
+    public async Task<ActionResult<TicketEventoResponseDto>> CrearComentario(int id, TicketComentarioCreateDto dto)
+    {
+        if (!await _db.Tickets.AnyAsync(t => t.Id == id)) return NotFound();
+
+        var evento = new TicketEvento
+        {
+            TicketId = id,
+            Tipo = TipoEventoTicket.Comentario,
+            ColaboradorId = ColaboradorIdActual(),
+            Texto = dto.Texto.Trim(),
+        };
+        _db.TicketEventos.Add(evento);
+        await _db.SaveChangesAsync();
+
+        // Recargar con el nombre del colaborador para la respuesta.
+        await _db.Entry(evento).Reference(e => e.Colaborador).LoadAsync();
+        return Ok(TicketEventoResponseDto.FromEntity(evento));
     }
 
     // DELETE /api/tickets/5 — solo administradores: es irreversible, más
@@ -190,6 +240,20 @@ public class TicketsController : ControllerBase
     {
         ticket.Actualizado = DateTime.UtcNow;
         ticket.ActualizadoPorId = ColaboradorIdActual();
+    }
+
+    // No hace SaveChangesAsync: se agrega al mismo change tracker que el
+    // update del ticket, para que ambos queden en una sola transacción.
+    private void RegistrarEvento(int ticketId, TipoEventoTicket tipo, string? valorAnterior, string? valorNuevo)
+    {
+        _db.TicketEventos.Add(new TicketEvento
+        {
+            TicketId = ticketId,
+            Tipo = tipo,
+            ColaboradorId = ColaboradorIdActual(),
+            ValorAnterior = valorAnterior,
+            ValorNuevo = valorNuevo,
+        });
     }
 
     private int? ColaboradorIdActual()
