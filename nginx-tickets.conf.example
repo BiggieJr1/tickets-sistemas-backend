@@ -1,19 +1,38 @@
 # Ejemplo para /etc/nginx/conf.d/tickets.conf
-# Ajusta server_name y las rutas a como las tengas en tu servidor.
+# Ajusta server_name y las rutas de los certificados a como las tengas en tu
+# servidor. Certificado obtenido por validación DNS (ej. certbot con el
+# plugin de tu proveedor de DNS) — no requiere que el servidor sea
+# alcanzable desde internet.
 
+# Redirige todo el tráfico HTTP a HTTPS. Entra ID exige que el redirect URI
+# de una SPA sea https:// (salvo http://localhost), así que el login de
+# Microsoft no funciona si te quedas en este bloque.
 server {
     listen 80;
-    server_name tickets.bisoft.local;  # o la IP/subdominio interno que uses
+    server_name tickets.bisoft.com.mx;
+    return 301 https://$host$request_uri;
+}
 
-    root /var/www/tickets-sistemas/frontend;
+server {
+    listen 443 ssl;
+    server_name tickets.bisoft.com.mx;
+
+    ssl_certificate     /etc/letsencrypt/live/tickets.bisoft.com.mx/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/tickets.bisoft.com.mx/privkey.pem;
+
+    # Build de producción de Angular (ng build), no el frontend/index.html
+    # viejo de las versiones pre-Angular de este proyecto.
+    root /var/www/tickets-sistemas/dist/tickets-sistemas/browser;
     index index.html;
 
     location / {
         try_files $uri $uri/ /index.html;
     }
 
-    # Todo lo que llegue a /api/* se manda al contenedor de la API,
-    # que en docker-compose.yml expone 127.0.0.1:5080
+    # Todo lo que llegue a /api/* se manda al contenedor de la API, que en
+    # docker-compose.yml expone 127.0.0.1:5080. Mismo origen que el
+    # frontend (mismo dominio/puerto 443 desde el navegador), así que no
+    # hace falta configurar CORS (ALLOWED_ORIGINS) en el backend.
     location /api/ {
         proxy_pass http://127.0.0.1:5080/api/;
         proxy_set_header Host $host;

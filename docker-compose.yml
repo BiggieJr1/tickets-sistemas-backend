@@ -1,14 +1,48 @@
 services:
+  tickets-db:
+    image: postgres:16
+    container_name: tickets-sistemas-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=tickets
+      - POSTGRES_USER=tickets
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+    volumes:
+      - tickets-db-data:/var/lib/postgresql/data
+      # Solo accesible desde el propio servidor — para pg_restore/psql al
+      # migrar los datos, o para revisar la base a mano. Quítalo si no lo
+      # necesitas expuesto ni siquiera en localhost.
+    ports:
+      - "127.0.0.1:5432:5432"
+
   tickets-api:
     build:
       context: ./TicketsSistemas.Api
     container_name: tickets-sistemas-api
     restart: unless-stopped
+    depends_on:
+      - tickets-db
     ports:
       - "127.0.0.1:5080:8080"   # solo accesible desde el propio servidor; nginx hace el proxy hacia afuera
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
-      # Cadena de conexión de Postgres/Supabase. No la escribas aquí: pon el
-      # valor real en un archivo .env (agregado a .gitignore) o expórtala en
-      # la shell antes de levantar el contenedor.
-      - ConnectionStrings__Default=${SUPABASE_CONNECTION_STRING}
+      # Ya no es Supabase: Postgres corre en el contenedor tickets-db de
+      # este mismo compose (nombre de servicio = hostname en la red interna
+      # de Docker). Variables reales van en un .env junto a este archivo
+      # (agregado a .gitignore), nunca se hardcodean aquí.
+      - ConnectionStrings__Default=Host=tickets-db;Port=5432;Database=tickets;Username=tickets;Password=${DB_PASSWORD}
+      # Solo hace falta la primera vez que la base queda vacía; si ya
+      # migraste los datos de Supabase con pg_dump/pg_restore, este admin
+      # ya existe y la variable no hace nada (el seed es idempotente).
+      - SEED_ADMIN_EMAIL=${SEED_ADMIN_EMAIL}
+      # Mismas credenciales de Graph que ya se usaban en Railway (Mail.Send,
+      # User.Read.All) — el App Registration de Entra ID no cambia, solo
+      # dónde corre el backend que lo usa.
+      - Graph__ClientSecret=${GRAPH_CLIENT_SECRET}
+      - Graph__SenderUpn=${GRAPH_SENDER_UPN}
+      # No hace falta ALLOWED_ORIGINS: nginx sirve el frontend y hace proxy
+      # de /api/* en el mismo origen, así que el navegador nunca manda una
+      # petición cross-origin que necesite CORS.
+
+volumes:
+  tickets-db-data:
