@@ -6,7 +6,14 @@ services:
     environment:
       - POSTGRES_DB=tickets
       - POSTGRES_USER=tickets
-      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:?Falta DB_PASSWORD en .env}
+    # La API corre db.Database.Migrate() al arrancar y truena si Postgres
+    # todavía no acepta conexiones, así que espera a que esto pase.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tickets -d tickets"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     volumes:
       - tickets-db-data:/var/lib/postgresql/data
       # Solo accesible desde el propio servidor — para pg_restore/psql al
@@ -21,7 +28,8 @@ services:
     container_name: tickets-sistemas-api
     restart: unless-stopped
     depends_on:
-      - tickets-db
+      tickets-db:
+        condition: service_healthy
     ports:
       - "127.0.0.1:5080:8080"   # solo accesible desde el propio servidor; nginx hace el proxy hacia afuera
     environment:

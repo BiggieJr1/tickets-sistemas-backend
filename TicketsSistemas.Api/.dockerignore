@@ -1,0 +1,11 @@
+# bin/ y obj/ de Windows (Visual Studio / dotnet local) no deben entrar a la
+# imagen: obj/project.assets.json trae rutas de C:\Users\... que pisan el
+# restore hecho dentro del contenedor y rompen el publish.
+bin/
+obj/
+.vs/
+*.user
+Dockerfile
+.dockerignore
+.env
+.env.*

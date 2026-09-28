@@ -39,15 +39,13 @@ pg_dump "postgresql://postgres.xxxxxxxx:TU-PASSWORD@aws-0-us-east-1.pooler.supab
 de que intente correr migraciones sobre una base vacía):
 
 ```bash
-# .env junto al docker-compose.yml (nunca se sube a git):
-cat > .env <<'EOF'
-DB_PASSWORD=elige-una-contraseña-fuerte
-SEED_ADMIN_EMAIL=raul.galaviz@bisoft.com.mx
-GRAPH_CLIENT_SECRET=el-mismo-que-ya-tienen-en-Railway
-GRAPH_SENDER_UPN=raul.galaviz@bisoft.com.mx
-EOF
+# .env junto al docker-compose.yml (nunca se sube a git). Llena los valores
+# siguiendo los comentarios de la plantilla:
+cp .env.example .env
+nano .env
 
-docker compose up -d tickets-db
+# Espera a que el healthcheck de Postgres pase a "healthy":
+docker compose up -d --wait tickets-db
 ```
 
 **2.3 Restaura el dump** dentro del contenedor:
