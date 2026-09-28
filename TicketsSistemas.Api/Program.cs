@@ -163,8 +163,12 @@ using (var scope = app.Services.CreateScope())
     // quedarse ahí "por si acaso", igual que pasó con la API key compartida
     // que hubo que quitar después. Ya no hace falta una contraseña: quien
     // entra con esa cuenta de Microsoft ya se autenticó con Entra ID.
-    var seedEmail = app.Configuration["SEED_ADMIN_EMAIL"]?.Trim().ToLower();
-    if (!string.IsNullOrWhiteSpace(seedEmail))
+    // Acepta varios correos separados por comas, igual que ALLOWED_ORIGINS.
+    var seedEmails = app.Configuration["SEED_ADMIN_EMAIL"]
+        ?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .Select(e => e.ToLower())
+        .Distinct() ?? [];
+    foreach (var seedEmail in seedEmails)
     {
         var yaExiste = db.Colaboradores.Any(c => c.Email == seedEmail);
         if (!yaExiste)
@@ -175,9 +179,9 @@ using (var scope = app.Services.CreateScope())
                 Email = seedEmail,
                 EsAdministrador = true,
             });
-            db.SaveChanges();
         }
     }
+    db.SaveChanges();
 }
 
 app.UseSwagger();

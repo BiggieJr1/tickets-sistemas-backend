@@ -14,7 +14,7 @@ WORKDIR /app
 
 COPY --from=build /app .
 
-ENV ASPNETCORE_URLS=http://+:8080
+# La imagen aspnet:8.0 ya escucha en el 8080 (ASPNETCORE_HTTP_PORTS).
 EXPOSE 8080
 
 # Usuario sin privilegios que ya trae la imagen oficial de .NET 8; la API no

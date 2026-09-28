@@ -18,9 +18,10 @@ services:
       - tickets-db-data:/var/lib/postgresql/data
       # Solo accesible desde el propio servidor — para pg_restore/psql al
       # migrar los datos, o para revisar la base a mano. Quítalo si no lo
-      # necesitas expuesto ni siquiera en localhost.
+      # necesitas expuesto ni siquiera en localhost. DB_HOST_PORT permite
+      # cambiarlo si la máquina ya tiene otro Postgres en el 5432.
     ports:
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:${DB_HOST_PORT:-5432}:5432"
 
   tickets-api:
     build:
