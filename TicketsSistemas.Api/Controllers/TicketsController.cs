@@ -82,10 +82,48 @@ public class TicketsController : ControllerBase
         return Ok(TicketResponseDto.FromEntity(ticket));
     }
 
+    // Cooldown entre tickets de una misma persona, contra doble clic y envíos
+    // repetidos. En memoria (no en la base): hay una sola instancia de la API
+    // y, si se reinicia, perder el cooldown no importa. Los administradores
+    // quedan exentos porque a veces levantan varios tickets seguidos en
+    // nombre de otras personas.
+    private static readonly TimeSpan CooldownCrear = TimeSpan.FromMinutes(1);
+    private static readonly Dictionary<int, DateTime> UltimoTicketPorColaborador = new();
+    private static readonly object CooldownLock = new();
+
     // POST /api/tickets
     [HttpPost]
     public async Task<ActionResult<TicketResponseDto>> Create(TicketCreateDto dto)
     {
+        // [ApiController] ya rechazó con 400 un dto inválido antes de llegar
+        // aquí, así que un formulario incompleto no gasta el cooldown.
+        var esAdmin = User.FindFirstValue(ClaimesColaborador.EsAdministrador) == "true";
+        var colaboradorId = int.Parse(User.FindFirstValue(ClaimesColaborador.ColaboradorId)!);
+        if (!esAdmin)
+        {
+            var ahora = DateTime.UtcNow;
+            TimeSpan? restante = null;
+            // Se aparta el turno antes de crear (dentro del lock) para que
+            // dos clics casi simultáneos no pasen los dos.
+            lock (CooldownLock)
+            {
+                if (UltimoTicketPorColaborador.TryGetValue(colaboradorId, out var ultimo) && ahora - ultimo < CooldownCrear)
+                    restante = CooldownCrear - (ahora - ultimo);
+                else
+                    UltimoTicketPorColaborador[colaboradorId] = ahora;
+            }
+
+            if (restante is not null)
+            {
+                var segundos = (int)Math.Ceiling(restante.Value.TotalSeconds);
+                Response.Headers.RetryAfter = segundos.ToString();
+                return StatusCode(StatusCodes.Status429TooManyRequests, new
+                {
+                    message = $"Espera {segundos} segundos antes de levantar otro ticket."
+                });
+            }
+        }
+
         var codigo = await GenerarCodigoAsync();
 
         var ticket = new Ticket
@@ -101,7 +139,17 @@ public class TicketsController : ControllerBase
         };
 
         _db.Tickets.Add(ticket);
-        await _db.SaveChangesAsync();
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch
+        {
+            // Si no se guardó, no cuenta como ticket levantado.
+            if (!esAdmin)
+                lock (CooldownLock) UltimoTicketPorColaborador.Remove(colaboradorId);
+            throw;
+        }
 
         var correosAdmins = await _db.Colaboradores
             .Where(c => c.EsAdministrador && c.Activo)
