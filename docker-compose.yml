@@ -43,9 +43,9 @@ services:
       # migraste los datos de Supabase con pg_dump/pg_restore, este admin
       # ya existe y la variable no hace nada (el seed es idempotente).
       - SEED_ADMIN_EMAIL=${SEED_ADMIN_EMAIL}
-      # Mismas credenciales de Graph que ya se usaban en Railway (Mail.Send,
-      # User.Read.All) — el App Registration de Entra ID no cambia, solo
-      # dónde corre el backend que lo usa.
+      # Credenciales de Graph (Mail.Send, User.Read.All) del App
+      # Registration de Entra ID — no cambia, solo dónde corre el backend
+      # que lo usa. Ver .env.example para de dónde sacar el secreto.
       - Graph__ClientSecret=${GRAPH_CLIENT_SECRET}
       - Graph__SenderUpn=${GRAPH_SENDER_UPN}
       # No hace falta ALLOWED_ORIGINS: nginx sirve el frontend y hace proxy

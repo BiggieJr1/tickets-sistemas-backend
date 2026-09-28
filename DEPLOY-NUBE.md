@@ -1,5 +1,9 @@
 # Desplegar Centro de Tickets en la nube (Railway + Netlify)
 
+> **Obsoleto (28 sep 2026):** Railway y Netlify ya se dieron de baja; el
+> proyecto se mueve a servidor propio. Ver `MIGRAR-SERVIDOR-LOCAL.md`. Esta
+> guía se conserva solo como referencia histórica.
+
 Guía paso a paso para sacar este proyecto de la red interna y dejarlo accesible para oficina + gente remota, con la protección de contraseña compartida (`API_KEY`) que ya quedó agregada en `Program.cs` y `frontend/index.html`.
 
 ## 0. Subir el proyecto a GitHub

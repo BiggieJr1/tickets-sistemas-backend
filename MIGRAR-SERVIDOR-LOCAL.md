@@ -2,7 +2,8 @@
 
 Guía para sacar el Centro de Tickets de Netlify + Railway + Supabase y dejarlo
 corriendo en tu servidor Ubuntu, solo accesible desde la red interna de
-oficina. Requiere `docker-compose.yml` + `nginx-tickets.conf.example`
+oficina. **Netlify y Railway ya se dieron de baja** (28 sep 2026); Supabase
+sigue activo solo para sacar los datos en el paso 2 — no lo borres antes. Requiere `docker-compose.yml` + `nginx-tickets.conf.example`
 (actualizados en esta misma sesión) y acceso al DNS de `bisoft.com.mx` para
 sacar un certificado real sin exponer el servidor a internet.
 
@@ -112,7 +113,9 @@ sudo nginx -t && sudo systemctl reload nginx
 Entra admin center → **App registrations** → `tickets-sistemas-frontend`
 (ClientId `c50e32a0-dd31-4e62-a160-2e9169da72d3`) → **Authentication** →
 agrega `https://tickets.bisoft.com.mx` a la lista de Redirect URIs (plataforma
-SPA). Puedes dejar la de Netlify también, no estorban entre sí.
+SPA). Netlify ya se dio de baja, así que quita también
+`https://generador-tickets.netlify.app` de esa lista: si alguien más llegara a
+registrar ese subdominio, podría recibir los redirects de login.
 
 ## 8. Resolver el dominio dentro de la oficina
 
