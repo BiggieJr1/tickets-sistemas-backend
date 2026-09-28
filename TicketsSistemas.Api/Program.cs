@@ -112,6 +112,20 @@ builder.Services.Configure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationSch
 
         logger.LogInformation("Login aceptado para ColaboradorId={ColaboradorId}, correo={Email}.", colaborador.Id, email);
 
+        // Los admins sembrados por SEED_ADMIN_EMAIL no tienen nombre real
+        // (solo el correo, o "Administrador" en bases sembradas antes de este
+        // cambio). En su primer login se toma el nombre del token de
+        // Microsoft, para que no queden varios "Administrador" iguales en el
+        // selector de asignación. Un nombre ya editado a mano no se toca.
+        var nombreEntra = context.Principal?.FindFirstValue("name")?.Trim();
+        if (!string.IsNullOrWhiteSpace(nombreEntra)
+            && (colaborador.NombreCompleto == colaborador.Email || colaborador.NombreCompleto == "Administrador"))
+        {
+            colaborador.NombreCompleto = nombreEntra;
+            colaborador.Actualizado = DateTime.UtcNow;
+            await db.SaveChangesAsync();
+        }
+
         var identity = (ClaimsIdentity)context.Principal!.Identity!;
         identity.AddClaim(new Claim(ClaimesColaborador.ColaboradorId, colaborador.Id.ToString()));
         identity.AddClaim(new Claim(ClaimesColaborador.EsAdministrador, colaborador.EsAdministrador ? "true" : "false"));
@@ -175,7 +189,9 @@ using (var scope = app.Services.CreateScope())
         {
             db.Colaboradores.Add(new Colaborador
             {
-                NombreCompleto = "Administrador",
+                // Provisional: se reemplaza por el nombre de Entra ID en su
+                // primer login (ver OnTokenValidated).
+                NombreCompleto = seedEmail,
                 Email = seedEmail,
                 EsAdministrador = true,
             });
